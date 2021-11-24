@@ -26,7 +26,7 @@ def train_gp_model(gp_model, optimizer=None, epochs=100, mll=None, verbose=1):
 
     for i in range(epochs):
         optimizer.zero_grad()
-        output = gp_model(gp_model.train_inputs)
+        output = gp_model(gp_model.train_inputs[0])
         loss = -mll(output, gp_model.train_targets)
         loss.backward()
         if verbose == 1:
@@ -81,7 +81,7 @@ class GpytorchUtilityFunction(UtilityFunction):
         mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
         std = torch.sqrt(var)
         ucb_value = mean + kappa * std
-        return ucb_value.numpy()
+        return ucb_value.detach().numpy()
 
     @staticmethod
     def _ei(x, gp, y_max, xi):
@@ -89,8 +89,8 @@ class GpytorchUtilityFunction(UtilityFunction):
         gp.likelihood.eval()
         mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
         std = torch.sqrt(var)
-        a = (mean - y_max - xi).numpy()
-        z = (a / std).numpy()
+        a = (mean - y_max - xi).detach().numpy()
+        z = (a / std).detach().numpy()
         return a * norm.cdf(z) + std * norm.pdf(z)
 
     @staticmethod
@@ -99,7 +99,7 @@ class GpytorchUtilityFunction(UtilityFunction):
         gp.likelihood.eval()
         mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
         std = torch.sqrt(var)
-        z = ((mean - y_max - xi) / std).numpy()
+        z = ((mean - y_max - xi) / std).detach().numpy()
         return norm.cdf(z)
 
 
