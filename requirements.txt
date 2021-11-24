@@ -1,3 +1,5 @@
 bayesian-optimization
 gpytorch
 torch
+numpy
+scipy
