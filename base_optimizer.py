@@ -2,9 +2,8 @@ from bayes_opt import bayesian_optimization as bo
 from bayes_opt.event import Events
 import gpytorch
 import torch
-from gpytorch_models.linear_weight_GP import ExactGPModel
-from utils import gpytorch_acq_max, train_gp_model
-import warnings
+from optimizers.GpytorchBO.gpytorch_models.linear_weight_GP import ExactGPModel
+from optimizers.GpytorchBO.utils import gpytorch_acq_max, train_gp_model, GpytorchUtilityFunction
 
 
 class GpytorchOptimization(bo.BayesianOptimization):
@@ -26,7 +25,7 @@ class GpytorchOptimization(bo.BayesianOptimization):
         train_gp_model(gtorch_model, epochs=50, verbose=0)
         suggestion = gpytorch_acq_max(
             ac=utility_function.utility,
-            gp=self._gp,
+            gp=gtorch_model,
             y_max=self._space.target.max(),
             bounds=self._space.bounds,
             random_state=self._random_state
@@ -47,3 +46,27 @@ class GpytorchOptimization(bo.BayesianOptimization):
         self.dispatch(Events.OPTIMIZATION_START)
         self._prime_queue(init_points)
         self.set_gp_params(**gp_params)
+
+        util = GpytorchUtilityFunction(
+            kind=acq,
+            kappa=kappa,
+            xi=xi,
+            kappa_decay=kappa_decay,
+            kappa_decay_delay=kappa_decay_delay
+        )
+        iteration = 0
+        while not self._queue.empty or iteration < n_iter:
+            try:
+                x_probe = next(self._queue)
+            except StopIteration:
+                util.update_params()
+                x_probe = self.suggest(util)
+                iteration += 1
+
+            self.probe(x_probe, lazy=False)
+
+            if self._bounds_transformer:
+                self.set_bounds(
+                    self._bounds_transformer.transform(self._space))
+
+        self.dispatch(Events.OPTIMIZATION_END)
