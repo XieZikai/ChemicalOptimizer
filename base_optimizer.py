@@ -4,17 +4,26 @@ import gpytorch
 import torch
 from optimizers.GpytorchBO.gpytorch_models.linear_weight_GP import ExactGPModel
 from optimizers.GpytorchBO.utils import gpytorch_acq_max, train_gp_model, GpytorchUtilityFunction
+cuda_available = torch.cuda.is_available()
 
 
 class GpytorchOptimization(bo.BayesianOptimization):
 
     def __init__(self, f, pbounds, random_state=None, verbose=2,
-                 bounds_transformer=None, gp_regressor=None, GP=ExactGPModel):
+                 bounds_transformer=None, gp_regressor=None, GP=ExactGPModel, cuda=None):
         super(GpytorchOptimization, self).__init__(f, pbounds=pbounds, random_state=random_state, verbose=verbose,
                                                    bounds_transformer=bounds_transformer)
+        if cuda is None and cuda_available:
+            self.cuda = True
+            print('cuda on')
+        else:
+            self.cuda = False
         if gp_regressor is None:
             self._GP = GP
-            self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
+            if self.cuda:
+                self.likelihood = gpytorch.likelihoods.GaussianLikelihood().cuda()
+            else:
+                self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
 
     def suggest(self, utility_function):
         if len(self._space) == 0:
@@ -22,13 +31,16 @@ class GpytorchOptimization(bo.BayesianOptimization):
         gtorch_model = self._GP(torch.Tensor(self.space.params),
                                 torch.Tensor(self.space.target),
                                 self.likelihood)
-        train_gp_model(gtorch_model, epochs=50, verbose=0)
+        if self.cuda:
+            gtorch_model = gtorch_model.cuda()
+        train_gp_model(gtorch_model, epochs=50, verbose=0, cuda=self.cuda)
         suggestion = gpytorch_acq_max(
             ac=utility_function.utility,
             gp=gtorch_model,
             y_max=self._space.target.max(),
             bounds=self._space.bounds,
-            random_state=self._random_state
+            random_state=self._random_state,
+            cuda=self.cuda
         )
         return self._space.array_to_params(suggestion)
 
@@ -52,7 +64,8 @@ class GpytorchOptimization(bo.BayesianOptimization):
             kappa=kappa,
             xi=xi,
             kappa_decay=kappa_decay,
-            kappa_decay_delay=kappa_decay_delay
+            kappa_decay_delay=kappa_decay_delay,
+            cuda=self.cuda
         )
         iteration = 0
         while not self._queue.empty or iteration < n_iter:

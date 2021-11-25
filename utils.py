@@ -7,7 +7,7 @@ import torch
 from scipy.stats import norm
 
 
-def train_gp_model(gp_model, optimizer=None, epochs=100, mll=None, verbose=1):
+def train_gp_model(gp_model, optimizer=None, epochs=100, mll=None, verbose=1, cuda=False):
     """
     Training procedure of Gaussian process model.
     :param gp_model: GP model to be trained
@@ -15,6 +15,7 @@ def train_gp_model(gp_model, optimizer=None, epochs=100, mll=None, verbose=1):
     :param epochs: Training epochs, default is 10
     :param mll: Marginal likelihood for the GP model, default is gpytorch.mlls.ExactMarginalLogLikelihood
     :param verbose: Controller of showing training procedure
+    :param cuda: Controller of using GPU acceleration
     :return: NA
     """
     gp_model.train()
@@ -26,8 +27,12 @@ def train_gp_model(gp_model, optimizer=None, epochs=100, mll=None, verbose=1):
 
     for i in range(epochs):
         optimizer.zero_grad()
-        output = gp_model(gp_model.train_inputs[0])
-        loss = -mll(output, gp_model.train_targets)
+        if cuda:
+            output = gp_model(gp_model.train_inputs[0].cuda())
+            loss = -mll(output, gp_model.train_targets.cuda())
+        else:
+            output = gp_model(gp_model.train_inputs[0])
+            loss = -mll(output, gp_model.train_targets)
         loss.backward()
         if verbose == 1:
             print('Iter %d/%d - Loss: %.3f   lengthscale: %.3f   noise: %.3f' % (
@@ -43,6 +48,7 @@ def sample_gp_model(gp_model, x, sampling_num):
     :param gp_model: provided GP model for sampling
     :param x: GP input. gp_model(x) will output the Gaussian distribution for sampling
     :param sampling_num: returned sampling result number
+    :param cuda: Controller of using GPU acceleration
     :return: sampled results of shape (sampling_num,)
     """
     gp_model.eval()
@@ -71,8 +77,25 @@ def get_mean_variance(gp_model, x):
 
 class GpytorchUtilityFunction(UtilityFunction):
 
-    def __init__(self,  kind, kappa, xi, kappa_decay=1, kappa_decay_delay=0):
+    def __init__(self,  kind, kappa, xi, kappa_decay=1, kappa_decay_delay=0, cuda=False):
         super(GpytorchUtilityFunction, self).__init__(kind, kappa, xi, kappa_decay, kappa_decay_delay)
+        self.cuda = cuda
+
+    def utility(self, x, gp, y_max):
+        if not self.cuda:
+            if self.kind == 'ucb':
+                return self._ucb(x, gp, self.kappa)
+            if self.kind == 'ei':
+                return self._ei(x, gp, y_max, self.xi)
+            if self.kind == 'poi':
+                return self._poi(x, gp, y_max, self.xi)
+        if self.cuda:
+            if self.kind == 'ucb':
+                return self._ucb_cuda(x, gp, self.kappa)
+            if self.kind == 'ei':
+                return self._ei_cuda(x, gp, y_max, self.xi)
+            if self.kind == 'poi':
+                return self._poi_cuda(x, gp, y_max, self.xi)
 
     @staticmethod
     def _ucb(x, gp, kappa):
@@ -82,6 +105,15 @@ class GpytorchUtilityFunction(UtilityFunction):
         std = torch.sqrt(var)
         ucb_value = mean + kappa * std
         return ucb_value.detach().numpy()
+
+    @staticmethod
+    def _ucb_cuda(x, gp, kappa):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        std = torch.sqrt(var)
+        ucb_value = mean + kappa * std
+        return ucb_value.cpu().detach().numpy()
 
     @staticmethod
     def _ei(x, gp, y_max, xi):
@@ -94,6 +126,16 @@ class GpytorchUtilityFunction(UtilityFunction):
         return a * norm.cdf(z) + std * norm.pdf(z)
 
     @staticmethod
+    def _ei_cuda(x, gp, y_max, xi):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        std = torch.sqrt(var)
+        a = (mean - y_max - xi).cpu().detach().numpy()
+        z = (a / std).cpu().detach().numpy()
+        return a * norm.cdf(z) + std * norm.pdf(z)
+
+    @staticmethod
     def _poi(x, gp, y_max, xi):
         gp.eval()
         gp.likelihood.eval()
@@ -102,8 +144,17 @@ class GpytorchUtilityFunction(UtilityFunction):
         z = ((mean - y_max - xi) / std).detach().numpy()
         return norm.cdf(z)
 
+    @staticmethod
+    def _poi_cuda(x, gp, y_max, xi):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        std = torch.sqrt(var)
+        z = ((mean - y_max - xi) / std).cpu().detach().numpy()
+        return norm.cdf(z)
 
-def gpytorch_acq_max(ac, gp, y_max, bounds, random_state, n_warmup=10000, n_iter=10):
+
+def gpytorch_acq_max(ac, gp, y_max, bounds, random_state, n_warmup=10000, n_iter=10, cuda=False):
     # Warm up with random points
     x_tries = random_state.uniform(bounds[:, 0], bounds[:, 1],
                                    size=(n_warmup, bounds.shape[0]))
