@@ -74,6 +74,7 @@ class GpytorchOptimization(bo.BayesianOptimization):
         )
         iteration = 0
         gated_list = []
+        eigvalue_list = []
         while not self._queue.empty or iteration < n_iter:
             try:
                 x_probe = next(self._queue)
@@ -92,8 +93,11 @@ class GpytorchOptimization(bo.BayesianOptimization):
                 try:
                     gated_value = self.gpytorch_model.get_gate(iteration)
                     gated_list += [gated_value]
+                    eigvalue, eigvec = self.gpytorch_model.get_corr_eig()
+                    # print(eigvalue)
+                    eigvalue_list += [eigvalue]
                 except:
                     pass
 
         self.dispatch(Events.OPTIMIZATION_END)
-        return gated_list
+        return gated_list, eigvalue_list
