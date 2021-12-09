@@ -4,6 +4,7 @@ import gpytorch
 import torch
 from optimizers.GpytorchBO.gpytorch_models.linear_weight_GP import ExactGPModel
 from optimizers.GpytorchBO.utils import gpytorch_acq_max, train_gp_model, GpytorchUtilityFunction
+
 cuda_available = torch.cuda.is_available()
 
 
@@ -22,8 +23,11 @@ class GpytorchOptimization(bo.BayesianOptimization):
             self._GP = GP
             if self.cuda:
                 self.likelihood = gpytorch.likelihoods.GaussianLikelihood().cuda()
+                self.likelihood.initialize(noise=1e-4)
             else:
                 self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
+                self.likelihood.initialize(noise=1e-4)
+        self.gpytorch_model = None
 
     def suggest(self, utility_function):
         if len(self._space) == 0:
@@ -34,6 +38,7 @@ class GpytorchOptimization(bo.BayesianOptimization):
         if self.cuda:
             gtorch_model = gtorch_model.cuda()
         train_gp_model(gtorch_model, epochs=50, verbose=0, cuda=self.cuda)
+        self.gpytorch_model = gtorch_model
         suggestion = gpytorch_acq_max(
             ac=utility_function.utility,
             gp=gtorch_model,
@@ -68,6 +73,7 @@ class GpytorchOptimization(bo.BayesianOptimization):
             cuda=self.cuda
         )
         iteration = 0
+        gated_list = []
         while not self._queue.empty or iteration < n_iter:
             try:
                 x_probe = next(self._queue)
@@ -82,4 +88,12 @@ class GpytorchOptimization(bo.BayesianOptimization):
                 self.set_bounds(
                     self._bounds_transformer.transform(self._space))
 
+            if iteration % 10 == 0:
+                try:
+                    gated_value = self.gpytorch_model.get_gate(iteration)
+                    gated_list += [gated_value]
+                except:
+                    pass
+
         self.dispatch(Events.OPTIMIZATION_END)
+        return gated_list
