@@ -52,8 +52,8 @@ class GatedLinearGPModel(gpytorch.models.ExactGP):
         super(GatedLinearGPModel, self).__init__(train_x, train_y, likelihood)
         self.norm = nn.BatchNorm1d(num_features=train_x.shape[1])
 
-        self.gate_linear = nn.Linear(train_x.shape[1], train_x.shape[1], bias=True)
-        torch.nn.init.eye_(self.gate_linear.weight)
+        # self.gate_linear = nn.Linear(train_x.shape[1], train_x.shape[1], bias=True)
+        # torch.nn.init.eye_(self.gate_linear.weight)
 
         self.gate_weight = nn.Parameter(torch.eye(train_x.shape[1]))
         self.gate_bias = nn.Parameter(torch.zeros(train_x.shape[1]))
@@ -84,7 +84,7 @@ class GatedLinearGPModel(gpytorch.models.ExactGP):
 
     def get_gate(self, training_iteration):
         x = self.norm(self.train_x)
-        gated_x = self.sigmoid(self.gate_linear(x))
+        gated_x = self.sigmoid(torch.matmul(x, self.corr) + self.gate_bias)
         gated_result = gated_x.sum(axis=0)/training_iteration
         print('Gated result: ', gated_result)
         return self.gate_linear.weight, self.gate_linear.bias
@@ -95,8 +95,8 @@ class WideNDeepGPModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, wide_list, likelihood=default_likelihood):
         super(WideNDeepGPModel, self).__init__(train_x, train_y, likelihood)
         self.wide_linear = nn.Linear(len(wide_list), 1)
-        self.deep_gate_weight = nn.Parameter(torch.eye(train_x.shape[1] - len(wide_list)))
-        self.deep_gate_bias = nn.Parameter(torch.zeros(train_x.shape[1] - len(wide_list)))
+        self.deep_gate_weight = nn.Parameter(torch.eye(train_x[1].shape[1]))
+        self.deep_gate_bias = nn.Parameter(torch.zeros(train_x[1].shape[1]))
         self.deep_gate = nn.Sigmoid()
         self.deep_corr = None
 
@@ -106,7 +106,7 @@ class WideNDeepGPModel(gpytorch.models.ExactGP):
     def forward(self, wide_x, deep_x):
         wide_y = self.wide_linear(wide_x)
         self.deep_corr = (self.deep_gate_weight + self.deep_gate_weight.T) / 2
-        deep_gate = self.deep_gate(torch.matmul(self.deep_corr, deep_x) + self.deep_gate_bias)
+        deep_gate = self.deep_gate(torch.matmul(deep_x, self.deep_corr) + self.deep_gate_bias)
         deep_y = deep_x * deep_gate
         y = torch.cat([wide_y, deep_y], dim=1)
 

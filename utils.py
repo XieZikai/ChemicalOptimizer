@@ -75,6 +75,75 @@ def get_mean_variance(gp_model, x):
     return f_mean, f_var, y_predict, f_covar
 
 
+def get_mean_variance_wideep(gp_model, x_1, x_2):
+    """
+    Get the mean value, variance value, likelihood and covariance matrix of the wideep GP model (for Bayesian optimization).
+    :param gp_model: provided GP model
+    :param x: GP input
+    :return: tuple(mean, variance, covariance matrix)
+    """
+    gp_model.eval()
+    gp_model.likelihood.eval()
+    f_predict = gp_model(x_1, x_2)
+    y_predict = gp_model.likelihood(gp_model(x_1, x_2))
+    f_mean = f_predict.mean
+    f_var = f_predict.variance
+    f_covar = f_predict.covariance_matrix
+    return f_mean, f_var, y_predict, f_covar
+
+
+def train_wideep_gp_model(gp_model, optimizer=None, epochs=100, mll=None, verbose=1, cuda=False):
+    """
+    Training procedure of Gaussian process model with wide and deep embedding.
+    :param gp_model: GP model to be trained, must be a WideNDeepGPModel
+    :param optimizer: Training optimizer. If not provided, will use torch.optim.Adam
+    :param epochs: Training epochs, default is 10
+    :param mll: Marginal likelihood for the GP model, default is gpytorch.mlls.ExactMarginalLogLikelihood
+    :param verbose: Controller of showing training procedure
+    :param cuda: Controller of using GPU acceleration
+    :return: NA
+    """
+    gp_model.train()
+    gp_model.likelihood.train()
+    if optimizer is None:
+        optimizer = torch.optim.Adam(gp_model.parameters(), lr=0.1)
+    if mll is None:
+        mll = gpytorch.mlls.ExactMarginalLogLikelihood(gp_model.likelihood, gp_model)
+
+    for i in range(epochs):
+        optimizer.zero_grad()
+        if cuda:
+            output = gp_model(gp_model.train_inputs[0].cuda(), gp_model.train_inputs[1].cuda())
+            loss = -mll(output, gp_model.train_targets.cuda())
+        else:
+            # print(gp_model.train_inputs)
+            output = gp_model(gp_model.train_inputs[0], gp_model.train_inputs[1])
+            loss = -mll(output, gp_model.train_targets)
+        loss.backward()
+        if verbose == 1:
+            print('Iter %d/%d - Loss: %.3f   lengthscale: %.3f   noise: %.3f' % (
+                i + 1, epochs, loss.item(),
+                gp_model.covar_module.base_kernel.lengthscale.item(),
+                gp_model.likelihood.noise.item()))
+        optimizer.step()
+
+
+def sample_wideep_gp_model(gp_model, x, sampling_num):
+    """
+    Sample the result from the WideNDeepGPModel for given data x.
+    :param gp_model: provided GP model for sampling
+    :param x: GP input. gp_model(x) will output the Gaussian distribution for sampling
+    :param sampling_num: returned sampling result number
+    :param cuda: Controller of using GPU acceleration
+    :return: sampled results of shape (sampling_num,)
+    """
+    gp_model.eval()
+    gp_model.likelihood.eval()
+    f_predict = gp_model(x[0], x[1])
+    f_samples = f_predict.sample(sample_shape=torch.Size(sampling_num,))
+    return f_samples
+
+
 class GpytorchUtilityFunction(UtilityFunction):
 
     def __init__(self,  kind, kappa, xi, kappa_decay=1, kappa_decay_delay=0, cuda=False):
@@ -149,6 +218,91 @@ class GpytorchUtilityFunction(UtilityFunction):
         gp.eval()
         gp.likelihood.eval()
         mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        std = torch.sqrt(var)
+        z = ((mean - y_max - xi) / std).cpu().detach().numpy()
+        return norm.cdf(z)
+
+
+class WideepGPUtilityFunction(UtilityFunction):
+
+    def __init__(self,  kind, kappa, xi, kappa_decay=1, kappa_decay_delay=0, cuda=False, wide_index=None,
+                 deep_index=None):
+        super(WideepGPUtilityFunction, self).__init__(kind, kappa, xi, kappa_decay, kappa_decay_delay)
+        self.cuda = cuda
+        assert wide_index is not None
+        self.deep_index = deep_index
+        self.wide_index = wide_index
+
+    def utility(self, x, gp, y_max):
+        x_wide = x[:, self.wide_index]
+        x_deep = x[:, self.deep_index]
+        if not self.cuda:
+            if self.kind == 'ucb':
+                return self._ucb_wd(x_wide, x_deep, gp, self.kappa)
+            if self.kind == 'ei':
+                return self._ei_wd(x_wide, x_deep, gp, y_max, self.xi)
+            if self.kind == 'poi':
+                return self._poi_wd(x_wide, x_deep, gp, y_max, self.xi)
+        if self.cuda:
+            if self.kind == 'ucb':
+                return self._ucb_cuda(x_wide, x_deep, gp, self.kappa)
+            if self.kind == 'ei':
+                return self._ei_cuda(x_wide, x_deep, gp, y_max, self.xi)
+            if self.kind == 'poi':
+                return self._poi_cuda(x_wide, x_deep, gp, y_max, self.xi)
+
+    @staticmethod
+    def _ucb_wd(x_wide, x_deep, gp, kappa):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance_wideep(gp, torch.Tensor(x_wide), torch.Tensor(x_deep))
+        std = torch.sqrt(var)
+        ucb_value = mean + kappa * std
+        return ucb_value.detach().numpy()
+
+    @staticmethod
+    def _ucb_cuda(x_wide, x_deep, gp, kappa):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance_wideep(gp, torch.Tensor(x_wide).cuda(), torch.Tensor(x_deep).cuda())
+        std = torch.sqrt(var)
+        ucb_value = mean + kappa * std
+        return ucb_value.cpu().detach().numpy()
+
+    @staticmethod
+    def _ei_wd(x_wide, x_deep, gp, y_max, xi):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance_wideep(gp, torch.Tensor(x_wide), torch.Tensor(x_deep))
+        std = torch.sqrt(var)
+        a = (mean - y_max - xi).detach().numpy()
+        z = (a / std).detach().numpy()
+        return a * norm.cdf(z) + std * norm.pdf(z)
+
+    @staticmethod
+    def _ei_cuda(x_wide, x_deep, gp, y_max, xi):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance_wideep(gp, torch.Tensor(x_wide).cuda(), torch.Tensor(x_deep).cuda())
+        std = torch.sqrt(var)
+        a = (mean - y_max - xi).cpu().detach().numpy()
+        z = (a / std).cpu().detach().numpy()
+        return a * norm.cdf(z) + std * norm.pdf(z)
+
+    @staticmethod
+    def _poi_wd(x_wide, x_deep, gp, y_max, xi):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance_wideep(gp, torch.Tensor(x_wide), torch.Tensor(x_deep))
+        std = torch.sqrt(var)
+        z = ((mean - y_max - xi) / std).detach().numpy()
+        return norm.cdf(z)
+
+    @staticmethod
+    def _poi_cuda(x_wide, x_deep, gp, y_max, xi):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance_wideep(gp, torch.Tensor(x_wide).cuda(), torch.Tensor(x_deep).cuda())
         std = torch.sqrt(var)
         z = ((mean - y_max - xi) / std).cpu().detach().numpy()
         return norm.cdf(z)
