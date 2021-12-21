@@ -37,13 +37,14 @@ class GpytorchOptimization(bo.BayesianOptimization):
                 self.likelihood.initialize(noise=1e-4)
         self.gpytorch_model = None
         self.kwargs = kwargs
-        self.wide_index = []
-        self.deep_index = []
-        for i in range(len(self._bound)):
-            if list(self._bound.keys())[i] in self.kwargs['wide_list']:
-                self.wide_index += [i]
-            else:
-                self.deep_index += [i]
+        if self._GP == WideNDeepGPModel:
+            self.wide_index = []
+            self.deep_index = []
+            for i in range(len(self._bound)):
+                if list(self._bound.keys())[i] in self.kwargs['wide_list']:
+                    self.wide_index += [i]
+                else:
+                    self.deep_index += [i]
 
     def suggest(self, utility_function):
         if len(self._space) == 0:
@@ -75,10 +76,12 @@ class GpytorchOptimization(bo.BayesianOptimization):
                 self.gpytorch_model.set_train_data(torch.Tensor(self.space.params),
                                                    torch.Tensor(self.space.target),
                                                    strict=False)
+                # self.gpytorch_model.update_norm(torch.Tensor(self.space.params), torch.Tensor(self.space.target))
+
         if self._GP == WideNDeepGPModel:
-            train_wideep_gp_model(self.gpytorch_model, epochs=100, verbose=0, cuda=self.cuda)
+            train_wideep_gp_model(self.gpytorch_model, epochs=300, verbose=0, cuda=self.cuda)
         else:
-            train_gp_model(self.gpytorch_model, epochs=100, verbose=0, cuda=self.cuda)
+            train_gp_model(self.gpytorch_model, epochs=300, verbose=0, cuda=self.cuda)
 
         suggestion = gpytorch_acq_max(
             ac=utility_function.utility,
@@ -127,8 +130,12 @@ class GpytorchOptimization(bo.BayesianOptimization):
             )
 
         iteration = 0
+
+        # recording
         gated_list = []
         eigvalue_list = []
+        gate_weight = []
+
         while not self._queue.empty or iteration < n_iter:
             try:
                 x_probe = next(self._queue)
@@ -143,15 +150,16 @@ class GpytorchOptimization(bo.BayesianOptimization):
                 self.set_bounds(
                     self._bounds_transformer.transform(self._space))
 
-            if iteration % 10 == 0:
-                try:
-                    gated_value = self.gpytorch_model.get_gate(iteration)
-                    gated_list += [gated_value]
-                    eigvalue, eigvec = self.gpytorch_model.get_corr_eig()
-                    # print(eigvalue)
-                    eigvalue_list += [eigvalue]
-                except:
-                    pass
+            # if iteration % 10 == 0:
+            try:
+                gated_value = self.gpytorch_model.get_gated_result(iteration)
+                gated_list += [gated_value]
+                eigvalue, eigvec = self.gpytorch_model.get_corr_eig()
+                gate_weight += self.gpytorch_model.get_gate()
+                # print(eigvalue)
+                eigvalue_list += [eigvalue]
+            except:
+                pass
 
         self.dispatch(Events.OPTIMIZATION_END)
-        return gated_list, eigvalue_list
+        return gated_list, eigvalue_list, gate_weight

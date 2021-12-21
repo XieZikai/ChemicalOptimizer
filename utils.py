@@ -21,7 +21,7 @@ def train_gp_model(gp_model, optimizer=None, epochs=100, mll=None, verbose=1, cu
     gp_model.train()
     gp_model.likelihood.train()
     if optimizer is None:
-        optimizer = torch.optim.Adam(gp_model.parameters(), lr=0.1)
+        optimizer = torch.optim.SGD(gp_model.parameters(), lr=0.1)
     if mll is None:
         mll = gpytorch.mlls.ExactMarginalLogLikelihood(gp_model.likelihood, gp_model)
 
@@ -68,11 +68,15 @@ def get_mean_variance(gp_model, x):
     gp_model.eval()
     gp_model.likelihood.eval()
     f_predict = gp_model(x)
+    # print(f_predict.mean)
     y_predict = gp_model.likelihood(gp_model(x))
-    f_mean = f_predict.mean
+    # test modifying
+    # f_mean = f_predict.mean + gp_model.y_mean
     f_var = f_predict.variance
+    # f_std = torch.sqrt(f_var) * gp_model.y_std
     f_covar = f_predict.covariance_matrix
-    return f_mean, f_var, y_predict, f_covar
+    # print(f_mean, f_std)
+    return f_predict.mean, f_var, y_predict, f_covar
 
 
 def get_mean_variance_wideep(gp_model, x_1, x_2):
@@ -170,17 +174,16 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _ucb(x, gp, kappa):
         gp.eval()
         gp.likelihood.eval()
-        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
-        std = torch.sqrt(var)
+        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x))
         ucb_value = mean + kappa * std
+        # print('mean, var: ', mean, std)
         return ucb_value.detach().numpy()
 
     @staticmethod
     def _ucb_cuda(x, gp, kappa):
         gp.eval()
         gp.likelihood.eval()
-        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
-        std = torch.sqrt(var)
+        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
         ucb_value = mean + kappa * std
         return ucb_value.cpu().detach().numpy()
 
@@ -188,18 +191,16 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _ei(x, gp, y_max, xi):
         gp.eval()
         gp.likelihood.eval()
-        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
-        std = torch.sqrt(var)
+        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x))
         a = (mean - y_max - xi).detach().numpy()
-        z = (a / std).detach().numpy()
+        z = (a / std).numpy()
         return a * norm.cdf(z) + std * norm.pdf(z)
 
     @staticmethod
     def _ei_cuda(x, gp, y_max, xi):
         gp.eval()
         gp.likelihood.eval()
-        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
-        std = torch.sqrt(var)
+        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
         a = (mean - y_max - xi).cpu().detach().numpy()
         z = (a / std).cpu().detach().numpy()
         return a * norm.cdf(z) + std * norm.pdf(z)
@@ -208,8 +209,7 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _poi(x, gp, y_max, xi):
         gp.eval()
         gp.likelihood.eval()
-        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
-        std = torch.sqrt(var)
+        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x))
         z = ((mean - y_max - xi) / std).detach().numpy()
         return norm.cdf(z)
 
@@ -217,8 +217,7 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _poi_cuda(x, gp, y_max, xi):
         gp.eval()
         gp.likelihood.eval()
-        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
-        std = torch.sqrt(var)
+        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
         z = ((mean - y_max - xi) / std).cpu().detach().numpy()
         return norm.cdf(z)
 

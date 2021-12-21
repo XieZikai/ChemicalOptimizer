@@ -33,13 +33,33 @@ class LinearWeightExactGPModel(gpytorch.models.ExactGP):
 
 
 class ExactGPModel(gpytorch.models.ExactGP):
-    def __init__(self, train_x, train_y, likelihood=default_likelihood):
+    def __init__(self, train_x, train_y, likelihood=default_likelihood, normalize_y=False):
+        # test code
+        self.normalize_y = normalize_y
+        if normalize_y:
+            self.y_mean = torch.mean(train_y)
+            self.y_std = torch.std(train_y)
+            train_y = (train_y - self.y_mean) / self.y_std
+        else:
+            self.y_mean = 0
+            self.y_std = 1
+
         super(ExactGPModel, self).__init__(train_x, train_y, likelihood)
-        # self.mean_module = gpytorch.means.ConstantMean()
-        self.mean_module = gpytorch.means.LinearMean(input_size=train_x.shape[1])
+        self.mean_module = gpytorch.means.ConstantMean()
+        # self.mean_module = gpytorch.means.LinearMean(input_size=train_x.shape[1])
         matern = gpytorch.kernels.MaternKernel(nu=2.5)
         matern.initialize(lengthscale=1)
-        self.covar_module = gpytorch.kernels.ScaleKernel(matern)
+        self.covar_module = matern
+
+    def update_norm(self, train_x, train_y):
+        if self.normalize_y:
+            self.y_mean = torch.mean(train_y)
+            self.y_std = torch.std(train_y)
+            train_y = (train_y - self.y_mean) / self.y_std
+        else:
+            self.y_mean = 0
+            self.y_std = 1
+        self.set_train_data(train_x, train_y, strict=False)
 
     def forward(self, x):
         mean_x = self.mean_module(x)
@@ -62,8 +82,6 @@ class GatedLinearGPModel(gpytorch.models.ExactGP):
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(nu=2.5))
         self.corr = None
-        self.train_x = train_x
-        self.train_y = train_y
 
     def forward(self, x):
         x = self.norm(x)
@@ -82,12 +100,14 @@ class GatedLinearGPModel(gpytorch.models.ExactGP):
         mat = self.corr.detach().numpy()
         return np.linalg.eig(mat)
 
-    def get_gate(self, training_iteration):
-        x = self.norm(self.train_x)
+    def get_gated_result(self, training_iteration):
+        x = self.norm(self.train_inputs[0])
         gated_x = self.sigmoid(torch.matmul(x, self.corr) + self.gate_bias)
-        gated_result = gated_x.sum(axis=0)/training_iteration
-        print('Gated result: ', gated_result)
-        return self.gate_linear.weight, self.gate_linear.bias
+        gated_result = gated_x.sum(axis=0)/len(self.train_inputs[0])
+        return gated_result
+
+    def get_gate(self):
+        return self.corr.detach().numpy()
 
 
 class WideNDeepGPModel(gpytorch.models.ExactGP):
@@ -101,7 +121,9 @@ class WideNDeepGPModel(gpytorch.models.ExactGP):
         self.deep_corr = None
 
         self.mean_module = gpytorch.means.ConstantMean()
-        self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(nu=2.5))
+        k = gpytorch.kernels.MaternKernel(nu=2.5)
+        k.initialize(lengthscale=1)
+        self.covar_module = gpytorch.kernels.ScaleKernel(k)
 
     def forward(self, wide_x, deep_x):
         wide_y = self.wide_linear(wide_x)
