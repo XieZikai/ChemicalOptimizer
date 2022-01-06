@@ -5,6 +5,7 @@ import numpy as np
 
 
 default_likelihood = gpytorch.likelihoods.GaussianLikelihood()
+default_likelihood.initialize(noise=1e-4)
 
 
 class LinearWeightExactGPModel(gpytorch.models.ExactGP):

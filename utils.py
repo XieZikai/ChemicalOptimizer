@@ -174,7 +174,8 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _ucb(x, gp, kappa):
         gp.eval()
         gp.likelihood.eval()
-        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x))
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
+        std = torch.sqrt(var)
         ucb_value = mean + kappa * std
         # print('mean, var: ', mean, std)
         return ucb_value.detach().numpy()
@@ -183,7 +184,8 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _ucb_cuda(x, gp, kappa):
         gp.eval()
         gp.likelihood.eval()
-        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        std = torch.sqrt(var)
         ucb_value = mean + kappa * std
         return ucb_value.cpu().detach().numpy()
 
@@ -191,7 +193,8 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _ei(x, gp, y_max, xi):
         gp.eval()
         gp.likelihood.eval()
-        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x))
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
+        std = torch.sqrt(var)
         a = (mean - y_max - xi).detach().numpy()
         z = (a / std).numpy()
         return a * norm.cdf(z) + std * norm.pdf(z)
@@ -200,7 +203,8 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _ei_cuda(x, gp, y_max, xi):
         gp.eval()
         gp.likelihood.eval()
-        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        std = torch.sqrt(var)
         a = (mean - y_max - xi).cpu().detach().numpy()
         z = (a / std).cpu().detach().numpy()
         return a * norm.cdf(z) + std * norm.pdf(z)
@@ -209,7 +213,8 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _poi(x, gp, y_max, xi):
         gp.eval()
         gp.likelihood.eval()
-        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x))
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
+        std = torch.sqrt(var)
         z = ((mean - y_max - xi) / std).detach().numpy()
         return norm.cdf(z)
 
@@ -217,9 +222,18 @@ class GpytorchUtilityFunction(UtilityFunction):
     def _poi_cuda(x, gp, y_max, xi):
         gp.eval()
         gp.likelihood.eval()
-        mean, std, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        std = torch.sqrt(var)
         z = ((mean - y_max - xi) / std).cpu().detach().numpy()
         return norm.cdf(z)
+
+    @staticmethod
+    def _mace(x, gp, y_max, xi, kappa):
+        gp.eval()
+        gp.likelihood.eval()
+        mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x).cuda())
+        std = torch.sqrt(var)
+
 
 
 class WideepGPUtilityFunction(UtilityFunction):
