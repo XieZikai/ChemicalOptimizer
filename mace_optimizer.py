@@ -1,13 +1,15 @@
+import numpy as np
 from bayes_opt import bayesian_optimization as bo
 from bayes_opt.event import Events
 import gpytorch
 import torch
 from optimizers.GpytorchBO.gpytorch_models.linear_weight_GP import *
-from optimizers.GpytorchBO.utils import get_mean_variance_wideep, train_gp_model, train_wideep_gp_model, \
+from optimizers.GpytorchBO.utils import get_mean_variance, train_gp_model, train_wideep_gp_model, \
     GpytorchUtilityFunction, WideepGPUtilityFunction
 from pymoo.core.problem import Problem
 from pymoo.optimize import minimize
 from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.factory import get_sampling, get_crossover, get_mutation, get_termination
 from scipy.stats import norm
 
 cuda_available = torch.cuda.is_available()
@@ -16,14 +18,14 @@ cuda_available = torch.cuda.is_available()
 class MACE(Problem):
 
     def __init__(self, gp, y_max, xi=0.0, kappa=2.576):
-        super(MACE, self).__init__(n_var=11, n_obj=3, n_constr=0, xl=0.0, xu=5.0)
+        super(MACE, self).__init__(n_var=11, n_obj=3, n_constr=0, xl=np.zeros(11), xu=np.zeros(11)+5)
         self.xi = xi
         self.kappa = kappa
         self.gp = gp
         self.y_max = y_max
 
     def _evaluate(self, x, out, *args, **kwargs):
-        mean, var, _, _ = get_mean_variance_wideep(self.gp, torch.Tensor(x))
+        mean, var, _, _ = get_mean_variance(self.gp, torch.Tensor(x))
         std = torch.sqrt(var)
         # ucb
         ucb_value = (mean + self.kappa * std).detach().numpy()
@@ -35,6 +37,28 @@ class MACE(Problem):
         z = ((mean - self.y_max - self.xi) / std).cpu().detach().numpy()
         poi = norm.cdf(z)
         out['F'] = np.column_stack([ucb_value, ei, poi])
+
+
+def mace_acq_max(gp, y_max, sample_size=40):
+    mace_acq = MACE(gp=gp, y_max=y_max)
+    optimizer = NSGA2(pop_size=sample_size,
+                      n_offsprings=10,
+                      sampling=get_sampling('real_random'),
+                      crossover=get_crossover('real_sbx', prob=0.9, eta=15),
+                      mutation=get_mutation('real_pm'),
+                      eliminate_duplicates=True
+                      )
+    termination = get_termination("n_gen", 40)
+    res = minimize(problem=mace_acq,
+                   algorithm=optimizer,
+                   termination=termination,
+                   seed=1,
+                   save_history=False,
+                   verbose=False
+                   )
+    X = res.X
+    x = X[np.random.randint(sample_size)]
+    return x
 
 
 class GpytorchOptimization(bo.BayesianOptimization):
@@ -121,7 +145,8 @@ class GpytorchOptimization(bo.BayesianOptimization):
             cuda=self.cuda
         )'''
         suggestion = mace_acq_max(
-
+            gp=self.gpytorch_model,
+            y_max=self._space.target.max()
         )
 
         return self._space.array_to_params(suggestion)
@@ -141,7 +166,6 @@ class GpytorchOptimization(bo.BayesianOptimization):
         self._prime_queue(init_points)
         self.set_gp_params(**gp_params)
 
-        # todo: change the util (acq) functions into MACE acq function
         if self._GP == WideNDeepGPModel:
             util = WideepGPUtilityFunction(
                 kind=acq,

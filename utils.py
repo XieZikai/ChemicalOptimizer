@@ -194,9 +194,10 @@ class GpytorchUtilityFunction(UtilityFunction):
         gp.eval()
         gp.likelihood.eval()
         mean, var, _, _ = get_mean_variance(gp, torch.Tensor(x))
-        std = torch.sqrt(var)
+        std = torch.sqrt(var).detach().numpy()
         a = (mean - y_max - xi).detach().numpy()
-        z = (a / std).numpy()
+        z = (a / std)
+        # print(a.shape, std.shape, z.shape)
         return a * norm.cdf(z) + std * norm.pdf(z)
 
     @staticmethod
