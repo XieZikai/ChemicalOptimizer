@@ -235,7 +235,6 @@ class GpytorchUtilityFunction(UtilityFunction):
         std = torch.sqrt(var)
 
 
-
 class WideepGPUtilityFunction(UtilityFunction):
 
     def __init__(self,  kind, kappa, xi, kappa_decay=1, kappa_decay_delay=0, cuda=False, wide_index=None,
