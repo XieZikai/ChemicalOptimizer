@@ -25,18 +25,21 @@ class MACE(Problem):
         self.y_max = y_max
 
     def _evaluate(self, x, out, *args, **kwargs):
-        mean, var, _, _ = get_mean_variance(self.gp, torch.Tensor(x))
+        mean, var, _, _ = get_mean_variance(self.gp, torch.Tensor(x).to('cuda'))
         std = torch.sqrt(var)
         # ucb
-        ucb_value = (mean + self.kappa * std).detach().numpy()
+        ucb_value = (mean + self.kappa * std).cpu().detach().numpy()
         # ei
-        a = (mean - self.y_max - self.xi).detach().numpy()
-        z = (a / std).numpy()
+        a = (mean - self.y_max - self.xi)
+        z = (a / std).cpu().detach().numpy()
+        a = a.cpu().detach().numpy()
+        std = std.cpu().detach().numpy()
         ei = a * norm.cdf(z) + std * norm.pdf(z)
         # poi
+        std = torch.sqrt(var)
         z = ((mean - self.y_max - self.xi) / std).cpu().detach().numpy()
         poi = norm.cdf(z)
-        out['F'] = np.column_stack([ucb_value, ei, poi])
+        out['F'] = np.column_stack([-ucb_value, -ei, -poi])
 
 
 def mace_acq_max(gp, y_max, sample_size=40):
@@ -57,15 +60,15 @@ def mace_acq_max(gp, y_max, sample_size=40):
                    verbose=False
                    )
     X = res.X
-    x = X[np.random.randint(sample_size)]
+    x = X[np.random.randint(len(X))]
     return x
 
 
-class GpytorchOptimization(bo.BayesianOptimization):
+class MaceOptimization(bo.BayesianOptimization):
 
     def __init__(self, f, pbounds, random_state=None, verbose=2,
                  bounds_transformer=None, gp_regressor=None, GP=ExactGPModel, cuda=None, **kwargs):
-        super(GpytorchOptimization, self).__init__(f, pbounds=pbounds, random_state=random_state, verbose=verbose,
+        super(MaceOptimization, self).__init__(f, pbounds=pbounds, random_state=random_state, verbose=verbose,
                                                    bounds_transformer=bounds_transformer)
         self._bound = pbounds
         if cuda is None and cuda_available:
@@ -77,15 +80,9 @@ class GpytorchOptimization(bo.BayesianOptimization):
             self._GP = GP
             if self.cuda:
                 self.likelihood = gpytorch.likelihoods.GaussianLikelihood().cuda()
-                # noises = torch.ones(len(pbounds)) * 1e-6
-                # self.likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(noise=noises,
-                #                                                                     learn_additional_noise=False).cuda()
                 self.likelihood.initialize(noise=1e-4)
             else:
                 self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
-                # noises = torch.ones(len(pbounds)) * 1e-6
-                # self.likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(noise=noises,
-                #                                                                     learn_additional_noise=False)
                 self.likelihood.initialize(noise=1e-4)
         self.gpytorch_model = None
         self.kwargs = kwargs

@@ -89,6 +89,13 @@ class BOWrapper(BaseWrapper):
                 GP=WideNDeepGPModel,
                 wide_list=wide_list,
             )
+        # MaceOptimizer
+        from optimizers.GpytorchBO.mace_optimizer import MaceOptimization
+        optimizer = MaceOptimization(
+            f=self.black_box_function,
+            pbounds=self.bound,
+            verbose=2,
+            random_state=np.random.randint(100))
 
         self.n_iter = n_iter
 

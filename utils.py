@@ -28,6 +28,7 @@ def train_gp_model(gp_model, optimizer=None, epochs=100, mll=None, verbose=1, cu
     for i in range(epochs):
         optimizer.zero_grad()
         if cuda:
+            gp_model.cuda()
             output = gp_model(gp_model.train_inputs[0].cuda())
             loss = -mll(output, gp_model.train_targets.cuda())
         else:
