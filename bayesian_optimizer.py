@@ -2,6 +2,7 @@ from optimizers.base_optimizer import BaseWrapper
 
 from data import data_preprocessing
 from optimizers.GpytorchBO.base_optimizer import GpytorchOptimization
+from optimizers.GpytorchBO.test_scripts.bayesian_optimizer_with_mace import MaceBayesianOptimization
 from bayes_opt import BayesianOptimization
 from data.get_olympus_models import OlympusEmulatorWrapper
 import numpy as np
@@ -38,9 +39,15 @@ class BOWrapper(BaseWrapper):
 
         assert optimizer in self.optimizer_list, print('Optimizer option not provided! Only support: ' \
                                                        + merge_string(self.optimizer_list))
-
         if optimizer == 'BO':
             self.optimizer = BayesianOptimization(
+                f=self.black_box_function,
+                pbounds=self.bound,
+                verbose=2,
+                random_state=np.random.randint(100)
+            )
+        elif optimizer == 'MaceBO':
+            self.optimizer = MaceBayesianOptimization(
                 f=self.black_box_function,
                 pbounds=self.bound,
                 verbose=2,
@@ -124,7 +131,7 @@ if __name__ == '__main__':
     # optimizer = 'gatedGBO'
     # optimizer = 'linearGBO'
     # optimizer = 'BO'
-    optimizer = 'gpytorchBO'
+    optimizer = 'MaceBO'
     # optimizer = 'wideepGBO'
     # bo = BOWrapper(bound=bound, label_column=name, black_box_function=olympus_simulator.experiment, optimizer=optimizer)
     bo = BOWrapper(optimizer=optimizer, n_iter=n_iter)
