@@ -127,7 +127,7 @@ class BOWrapper(BaseWrapper):
 if __name__ == '__main__':
     # olympus_simulator = OlympusEmulatorWrapper(dataset='snar')
     # name, bound = olympus_simulator.get_names_and_bounds()
-    n_iter = 100
+    n_iter = 500
     # optimizer = 'gatedGBO'
     # optimizer = 'linearGBO'
     # optimizer = 'BO'
@@ -136,7 +136,7 @@ if __name__ == '__main__':
     # bo = BOWrapper(bound=bound, label_column=name, black_box_function=olympus_simulator.experiment, optimizer=optimizer)
     bo = BOWrapper(optimizer=optimizer, n_iter=n_iter)
     bo.optimize()
-    if optimizer == 'linearGBO' or 'gatedGBO':
+    if optimizer == 'linearGBO' or optimizer == 'gatedGBO':
         print(bo.optimizer.gpytorch_model.get_corr_matrix())
     if optimizer == 'gatedGBO':
         print(bo.optimizer.gpytorch_model.get_gate())

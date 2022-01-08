@@ -9,25 +9,29 @@ import numpy as np
 import warnings
 
 
-def mace_acq_max(gp, y_max, sample_size=40):
+def mace_acq_max(gp, y_max, sample_size=50):
     mace_acq = MaceNumpy(gp=gp, y_max=y_max)
     optimizer = NSGA2(pop_size=sample_size,
-                      n_offsprings=10,
+                      # n_offsprings=100,
                       sampling=get_sampling('real_random'),
                       crossover=get_crossover('real_sbx', prob=0.9, eta=15),
                       mutation=get_mutation('real_pm'),
                       eliminate_duplicates=True
                       )
-    termination = get_termination("n_gen", 40)
+    # termination = get_termination("n_gen", 40)
     res = minimize(problem=mace_acq,
                    algorithm=optimizer,
-                   termination=termination,
+                   # termination=termination,
                    seed=1,
                    save_history=False,
                    verbose=False
                    )
     X = res.X
-    x = X[np.random.randint(len(X))]
+    F = res.F
+    # print(F)
+    index = np.argmin(F)
+    x = X[index]
+    # x = X[np.random.randint(len(X))]
     return x
 
 
@@ -83,5 +87,4 @@ class MaceBayesianOptimization(BayesianOptimization):
         # Finding argmax of the acquisition function.
         suggestion = mace_acq_max(gp=self._gp,
                                   y_max=self._space.target.max())
-        print(suggestion)
         return self._space.array_to_params(suggestion)
