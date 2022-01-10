@@ -2,7 +2,10 @@ import torch
 from torch import nn
 import gpytorch
 import numpy as np
-
+from gpytorch.means import ConstantMean, ZeroMean, MultitaskMean
+from gpytorch.kernels import ScaleKernel, RBFKernel, MaternKernel, MultitaskKernel
+from gpytorch.priors import GammaPrior
+from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNormal
 
 default_likelihood = gpytorch.likelihoods.GaussianLikelihood()
 default_likelihood.initialize(noise=1e-4)
@@ -136,3 +139,62 @@ class WideNDeepGPModel(gpytorch.models.ExactGP):
         mean_x = self.mean_module(y)
         covar_x = self.covar_module(y)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+
+class EmbTransform(nn.Module):
+    def __init__(self, num_uniqs, **conf):
+        super().__init__()
+        self.emb_sizes = conf.get('emb_sizes')
+        if self.emb_sizes is None:
+            self.emb_sizes = [min(50, 1 + v // 2) for v in num_uniqs]
+
+        self.emb = nn.ModuleList([])
+        for num_uniq, emb_size in zip(num_uniqs, self.emb_sizes):
+            self.emb.append(nn.Embedding(num_uniq, emb_size))
+
+    @property
+    def num_out_list(self) -> [int]:
+        return self.emb_sizes
+
+    @property
+    def num_out(self) -> int:
+        return sum(self.emb_sizes)
+
+    def forward(self, xe):
+        return torch.cat([self.emb[i](xe[:, i]).view(xe.shape[0], -1) for i in range(len(self.emb))], dim=1)
+
+
+class HeboGPModel(gpytorch.models.ExactGP):
+    def __init__(self,
+                 x: torch.Tensor,
+                 xe: torch.Tensor,
+                 y: torch.Tensor,
+                 lik: gpytorch.likelihoods.GaussianLikelihood,
+                 **conf):
+        super().__init__((x, xe), y.squeeze(), lik)
+        mean = conf.get('mean', ConstantMean())
+        kern = conf.get('kern', ScaleKernel(MaternKernel(nu=1.5, ard_num_dims=x.shape[1]),
+                                            outputscale_prior=GammaPrior(0.5, 0.5)))
+        kern_emb = conf.get('kern_emb', MaternKernel(nu=2.5))
+
+        self.multi_task = y.shape[1] > 1
+        self.mean = mean if not self.multi_task else MultitaskMean(mean, num_tasks=y.shape[1])
+        if x.shape[1] > 0:
+            self.kern = kern if not self.multi_task else MultitaskKernel(kern, num_tasks=y.shape[1])
+        if xe.shape[1] > 0:
+            assert 'num_uniqs' in conf
+            num_uniqs = conf['num_uniqs']
+            emb_sizes = conf.get('emb_sizes', None)
+            self.emb_trans = EmbTransform(num_uniqs, emb_sizes=emb_sizes)
+            self.kern_emb = kern_emb if not self.multi_task else MultitaskKernel(kern_emb, num_tasks=y.shape[1])
+
+    def forward(self, x, xe):
+        m = self.mean(x)
+        if x.shape[1] > 0:
+            K = self.kern(x)
+            if xe.shape[1] > 0:
+                x_emb = self.emb_trans(xe)
+                K *= self.kern_emb(x_emb)
+        else:
+            K = self.kern_emb(self.emb_trans(xe))
+        return MultivariateNormal(m, K) if not self.multi_task else MultitaskMultivariateNormal(m, K)
