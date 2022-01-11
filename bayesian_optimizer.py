@@ -96,13 +96,24 @@ class BOWrapper(BaseWrapper):
                 GP=WideNDeepGPModel,
                 wide_list=wide_list,
             )
-        # MaceOptimizer
+        elif optimizer == 'TestBO':
+            prior_point_list = [[5, 0.25, 0, 0, 0, 2.75, 0, 0, 0, 0.5, 1.5]]
+            from optimizers.GpytorchBO.test_scripts.modified_bayesian_optimization import ModifiedBayesianOptimization
+            self.optimizer = ModifiedBayesianOptimization(
+                f=self.black_box_function,
+                pbounds=self.bound,
+                verbose=2,
+                random_state=np.random.randint(100),
+                prior_point_list=prior_point_list
+            )
+
+        '''# MaceOptimizer
         from optimizers.GpytorchBO.mace_optimizer import MaceOptimization
         optimizer = MaceOptimization(
             f=self.black_box_function,
             pbounds=self.bound,
             verbose=2,
-            random_state=np.random.randint(100))
+            random_state=np.random.randint(100))'''
 
         self.n_iter = n_iter
 
@@ -131,8 +142,9 @@ if __name__ == '__main__':
     # optimizer = 'gatedGBO'
     # optimizer = 'linearGBO'
     # optimizer = 'BO'
-    optimizer = 'MaceBO'
+    # optimizer = 'MaceBO'
     # optimizer = 'wideepGBO'
+    optimizer = 'TestBO'
     # bo = BOWrapper(bound=bound, label_column=name, black_box_function=olympus_simulator.experiment, optimizer=optimizer)
     bo = BOWrapper(optimizer=optimizer, n_iter=n_iter)
     bo.optimize()
