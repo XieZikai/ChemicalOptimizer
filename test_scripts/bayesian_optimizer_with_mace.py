@@ -9,7 +9,8 @@ import numpy as np
 import warnings
 
 
-def mace_acq_max(gp, y_max, sample_size=50):
+def mace_acq_max(gp, y_max, sample_size=10):
+    # mace_acq = MaceNumpy(gp=gp, y_max=y_max)
     mace_acq = MaceNumpy(gp=gp, y_max=y_max)
     optimizer = NSGA2(pop_size=sample_size,
                       # n_offsprings=100,
@@ -28,10 +29,11 @@ def mace_acq_max(gp, y_max, sample_size=50):
                    )
     X = res.X
     F = res.F
-    # print(F)
-    index = np.argmin(F)
-    x = X[index]
-    # x = X[np.random.randint(len(X))]
+    # print(X.shape)
+    if len(X.shape) == 1:
+        x = X
+    else:
+        x = X[np.random.randint(len(X))]
     return x
 
 
@@ -47,7 +49,7 @@ class MaceNumpy(Problem):
         self.kappa_decay_delay = kappa_decay_delay
 
     def _evaluate(self, x, out, *args, **kwargs):
-        ucb = UtilityFunction(kind='ucb',
+        ucb = UtilityFunction(kind='poi',
                               kappa=self.kappa,
                               xi=self.xi,
                               kappa_decay=self.kappa_decay,
@@ -66,6 +68,48 @@ class MaceNumpy(Problem):
                               kappa_decay_delay=self.kappa_decay_delay)
         poi_value = poi.utility(x, self.gp, self.y_max)
         out['F'] = np.column_stack([-ucb_value, -ei_value, -poi_value])
+        # out['F'] = np.column_stack([-ucb_value, -poi_value])
+
+
+class SingleAcqMace(Problem):
+
+    def __init__(self, gp, y_max, problem='ucb', xi=0.0, kappa=2.576, kappa_decay=1, kappa_decay_delay=0):
+        super(SingleAcqMace, self).__init__(n_var=11, n_obj=1, n_constr=0, xl=np.zeros(11), xu=np.zeros(11) + 5)
+        self.xi = xi
+        self.kappa = kappa
+        self.gp = gp
+        self.y_max = y_max
+        self.kappa_decay = kappa_decay
+        self.kappa_decay_delay = kappa_decay_delay
+        self.problem = problem
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        ucb = UtilityFunction(kind='ucb',
+                              kappa=self.kappa,
+                              xi=self.xi,
+                              kappa_decay=self.kappa_decay,
+                              kappa_decay_delay=self.kappa_decay_delay)
+        ucb_value = ucb.utility(x, self.gp, self.y_max)
+        ei = UtilityFunction(kind='ei',
+                             kappa=self.kappa,
+                             xi=self.xi,
+                             kappa_decay=self.kappa_decay,
+                             kappa_decay_delay=self.kappa_decay_delay)
+        ei_value = ei.utility(x, self.gp, self.y_max)
+        poi = UtilityFunction(kind='poi',
+                              kappa=self.kappa,
+                              xi=self.xi,
+                              kappa_decay=self.kappa_decay,
+                              kappa_decay_delay=self.kappa_decay_delay)
+        poi_value = poi.utility(x, self.gp, self.y_max)
+        if self.problem == 'poi':
+            out['F'] = -poi_value
+        elif self.problem == 'ucb':
+            out['F'] = -ucb_value
+        elif self.problem == 'ei':
+            out['F'] = -ei_value
+        else:
+            raise KeyError('Acq type must be one of: poi, ucb, ei')
 
 
 class MaceBayesianOptimization(BayesianOptimization):

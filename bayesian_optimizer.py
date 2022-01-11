@@ -97,7 +97,7 @@ class BOWrapper(BaseWrapper):
                 wide_list=wide_list,
             )
         elif optimizer == 'TestBO':
-            prior_point_list = [[5, 0.25, 0, 0, 0, 2.75, 0, 0, 0, 0.5, 1.5]]
+            prior_point_list = [[0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0]]
             from optimizers.GpytorchBO.test_scripts.modified_bayesian_optimization import ModifiedBayesianOptimization
             self.optimizer = ModifiedBayesianOptimization(
                 f=self.black_box_function,
@@ -138,7 +138,7 @@ class BOWrapper(BaseWrapper):
 if __name__ == '__main__':
     # olympus_simulator = OlympusEmulatorWrapper(dataset='snar')
     # name, bound = olympus_simulator.get_names_and_bounds()
-    n_iter = 500
+    n_iter = 200
     # optimizer = 'gatedGBO'
     # optimizer = 'linearGBO'
     # optimizer = 'BO'
@@ -148,6 +148,7 @@ if __name__ == '__main__':
     # bo = BOWrapper(bound=bound, label_column=name, black_box_function=olympus_simulator.experiment, optimizer=optimizer)
     bo = BOWrapper(optimizer=optimizer, n_iter=n_iter)
     bo.optimize()
+
     if optimizer == 'linearGBO' or optimizer == 'gatedGBO':
         print(bo.optimizer.gpytorch_model.get_corr_matrix())
     if optimizer == 'gatedGBO':

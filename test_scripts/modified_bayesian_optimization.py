@@ -74,27 +74,31 @@ class ModifiedBayesianOptimization(BayesianOptimization):
         return self._space.array_to_params(suggestion)
 
 
-class ModifiedFunction(UtilityFunction):
+class ModifiedFunction(object):
 
-    def __init__(self, kind, kappa, xi, prior_point_list, kappa_decay=1, kappa_decay_delay=0, lr=0.1, lr_decay=0.9):
-        super(ModifiedFunction, self).__init__(kind, kappa, xi, kappa_decay, kappa_decay_delay)
+    def __init__(self, kind, kappa, xi, prior_point_list, kappa_decay=1, kappa_decay_delay=0, lr=0.1, lr_decay=0.8):
+        self.kappa = kappa
+        self._kappa_decay = kappa_decay
+        self._kappa_decay_delay = kappa_decay_delay
+
+        self.xi = xi
+
+        self._iters_counter = 0
+
+        self.kind = kind
         self.prior_point_list = prior_point_list
         self.lr = lr
         self._lr_decay = lr_decay
 
     def utility(self, x, gp, y_max):
-        if self.kind == 'ucb':
-            return self._ucb(x, gp, self.kappa)
-        if self.kind == 'ei':
-            return self._ei(x, gp, y_max, self.xi)
-        if self.kind == 'poi':
-            return self._poi(x, gp, y_max, self.xi)
         if self.kind == 'new_ucb':
             return self._new_ucb(x, gp, self.kappa, self.prior_point_list, self.lr)
 
     def update_params(self):
-        super(ModifiedFunction, self).update_params()
-        self.lr += self._lr_decay
+        self._iters_counter += 1
+        if self._kappa_decay < 1 and self._iters_counter > self._kappa_decay_delay:
+            self.kappa *= self._kappa_decay
+        self.lr *= self._lr_decay
 
     @staticmethod
     def _new_ucb(x, gp, kappa, prior, lr):
@@ -106,39 +110,7 @@ class ModifiedFunction(UtilityFunction):
 
         dist = 0
         for x_prime in prior:
-            dist += np.linalg.norm(x, x_prime)
+            dist += np.linalg.norm(x-x_prime)
 
-        return ucb_score - lr * dist
+        return ucb_score - lr * np.sqrt(dist)
 
-
-def modified_acq_max(ac, gp, y_max, bounds, n, random_state, n_warmup=10000, n_iter=10, lr=0.9):
-    # Warm up with random points
-    x_tries = random_state.uniform(bounds[:, 0], bounds[:, 1],
-                                   size=(n_warmup, bounds.shape[0]))
-    ys, dist = ac(x_tries, gp=gp, y_max=y_max)
-    ys = (lr ** n) * dist + ys
-    x_max = x_tries[ys.argmax()]
-    max_acq = ys.max()
-
-    # Explore the parameter space more throughly
-    x_seeds = random_state.uniform(bounds[:, 0], bounds[:, 1],
-                                   size=(n_iter, bounds.shape[0]))
-    for x_try in x_seeds:
-        # Find the minimum of minus the acquisition function
-        res = minimize(lambda x: -ac(x.reshape(1, -1), gp=gp, y_max=y_max),
-                       x_try.reshape(1, -1),
-                       bounds=bounds,
-                       method="L-BFGS-B")
-
-        # See if success
-        if not res.success:
-            continue
-
-        # Store it if better than previous minimum(maximum).
-        if max_acq is None or -res.fun[0] >= max_acq:
-            x_max = res.x
-            max_acq = -res.fun[0]
-
-    # Clip output to make sure it lies within the bounds. Due to floating
-    # point technicalities this is not always the case.
-    return np.clip(x_max, bounds[:, 0], bounds[:, 1])
