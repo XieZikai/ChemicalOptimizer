@@ -97,7 +97,7 @@ class BOWrapper(BaseWrapper):
                 wide_list=wide_list,
             )
         elif optimizer == 'TestBO':
-            prior_point_list = [[0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0]]
+            prior_point_list = [[5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]]
             from optimizers.GpytorchBO.test_scripts.modified_bayesian_optimization import ModifiedBayesianOptimization
             self.optimizer = ModifiedBayesianOptimization(
                 f=self.black_box_function,
@@ -121,7 +121,7 @@ class BOWrapper(BaseWrapper):
         gate = self.optimizer.maximize(
                 init_points=init_point,
                 n_iter=self.n_iter,
-                # acq='poi'
+                acq='ucb'
             )
         if return_gate is not None:
             return gate

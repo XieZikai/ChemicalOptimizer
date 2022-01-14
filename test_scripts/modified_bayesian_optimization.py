@@ -12,6 +12,7 @@ class ModifiedBayesianOptimization(BayesianOptimization):
                  bounds_transformer=None):
         super(ModifiedBayesianOptimization, self).__init__(f, pbounds, random_state, verbose, bounds_transformer)
         self.prior_point_list = prior_point_list
+        self._queue.add(np.array([5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]))
 
     def maximize(self,
                  init_points=5,
@@ -91,6 +92,8 @@ class ModifiedFunction(object):
         self._lr_decay = lr_decay
 
     def utility(self, x, gp, y_max):
+        if self.kind == 'ucb':
+            return self._ucb(x, gp, self.kappa)
         if self.kind == 'new_ucb':
             return self._new_ucb(x, gp, self.kappa, self.prior_point_list, self.lr)
 
@@ -99,6 +102,15 @@ class ModifiedFunction(object):
         if self._kappa_decay < 1 and self._iters_counter > self._kappa_decay_delay:
             self.kappa *= self._kappa_decay
         self.lr *= self._lr_decay
+
+    @staticmethod
+    def _ucb(x, gp, kappa):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            mean, std = gp.predict(x, return_std=True)
+            # print('mean, std: ', mean, std)
+
+        return mean + kappa * std
 
     @staticmethod
     def _new_ucb(x, gp, kappa, prior, lr):
