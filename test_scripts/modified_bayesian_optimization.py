@@ -1,3 +1,6 @@
+import os
+
+import pandas as pd
 from bayes_opt.bayesian_optimization import BayesianOptimization
 from bayes_opt.util import UtilityFunction, acq_max, ensure_rng
 import warnings
@@ -9,10 +12,16 @@ from scipy.optimize import minimize
 class ModifiedBayesianOptimization(BayesianOptimization):
 
     def __init__(self, f, pbounds, prior_point_list, random_state=None, verbose=2,
-                 bounds_transformer=None):
+                 bounds_transformer=None, save_result=False):
         super(ModifiedBayesianOptimization, self).__init__(f, pbounds, random_state, verbose, bounds_transformer)
         self.prior_point_list = prior_point_list
-        self._queue.add(np.array([5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]))
+        self._queue.add(np.array([5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]))  # Bad Prior
+        # self._queue.add(np.array([0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0]))  # Good Prior
+        self._max_value = 0  # Record max value
+        df_columns = list(pbounds.keys()) + ['target']
+        self._df_max = pd.DataFrame([], columns=df_columns)  # Record all optimal points as experiment results
+        self._df = pd.DataFrame([], columns=df_columns)  # Record all points as experiment results
+        self.save_result = save_result
 
     def maximize(self,
                  init_points=5,
@@ -44,13 +53,26 @@ class ModifiedBayesianOptimization(BayesianOptimization):
                 x_probe = self.suggest(util)
                 iteration += 1
 
-            self.probe(x_probe, lazy=False)
+            target = self.probe(x_probe, lazy=False)
+            x_probe_dict = self._space.array_to_params(x_probe)
+            x_probe_dict['target'] = target
+            self._df.append(x_probe_dict, ignore_index=True)
+            if target > self._max_value:
+                self._df_max.append(self._space.array_to_params(x_probe), ignore_index=True)
 
             if self._bounds_transformer:
                 self.set_bounds(
                     self._bounds_transformer.transform(self._space))
 
         self.dispatch(Events.OPTIMIZATION_END)
+        if self.save_result:
+            from datetime import datetime
+            name = str(datetime.now()).replace(':', '-').split('.')[0]
+            path = os.path.join('./data', name)
+            if not os.path.exists(path):
+                os.mkdir(path)
+            self._df.to_csv(os.path.join(path, 'df_total.csv'))
+            self._df_max.to_csv(os.path.join(path, 'df_max.csv'))
 
     def suggest(self, utility_function):
         """Most promissing point to probe next"""
