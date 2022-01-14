@@ -32,11 +32,12 @@ class BOWrapper(BaseWrapper):
     Wrap the bayesian optimization algorithm from bayes_opt for optimizer verifier.
     """
 
-    def __init__(self, bound=None, data=data_preprocessing.get_kuka_data(), label_column='target',
-                 black_box_function=None, optimizer=None, n_iter=500, **kwargs):
+    def __init__(self, save_csv=False, bound=None, data=data_preprocessing.get_kuka_data(),
+                 label_column='target',black_box_function=None, optimizer=None, save_dir=None,
+                 n_iter=500, prior_point_list=None, acq='ucb', adding_init=False, **kwargs):
         super(BOWrapper, self).__init__(bound=bound, data=data, label_column=label_column,
                                         black_box_function=black_box_function, optimizer=optimizer)
-
+        self.acq = acq
         assert optimizer in self.optimizer_list, print('Optimizer option not provided! Only support: ' \
                                                        + merge_string(self.optimizer_list))
         if optimizer == 'BO':
@@ -97,14 +98,16 @@ class BOWrapper(BaseWrapper):
                 wide_list=wide_list,
             )
         elif optimizer == 'TestBO':
-            prior_point_list = [[5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]]
             from optimizers.GpytorchBO.test_scripts.modified_bayesian_optimization import ModifiedBayesianOptimization
             self.optimizer = ModifiedBayesianOptimization(
                 f=self.black_box_function,
                 pbounds=self.bound,
                 verbose=2,
                 random_state=np.random.randint(100),
-                prior_point_list=prior_point_list
+                prior_point_list=prior_point_list,
+                save_result=save_csv,
+                adding_init_sample=adding_init,
+                save_dir=save_dir
             )
 
         '''# MaceOptimizer
@@ -121,7 +124,7 @@ class BOWrapper(BaseWrapper):
         gate = self.optimizer.maximize(
                 init_points=init_point,
                 n_iter=self.n_iter,
-                acq='ucb'
+                acq=self.acq
             )
         if return_gate is not None:
             return gate
@@ -136,6 +139,46 @@ class BOWrapper(BaseWrapper):
 
 
 if __name__ == '__main__':
+
+
+    # Massive experiments
+    n_iter = 200
+    optimizer = 'TestBO'
+
+    prior_point_list = [[5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]]  # Bad prior
+    # prior_point_list = [[0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0]]  # Good prior
+
+    for _ in range(100):
+        # Experiment: UCB with penalty term
+        bo = BOWrapper(optimizer=optimizer,
+                       n_iter=n_iter,
+                       save_csv=True,
+                       prior_point_list=prior_point_list,
+                       acq='new_ucb',
+                       save_dir='penalty_term')
+        bo.optimize()
+
+    for _ in range(100):
+        # Contrast experiment: vanilla UCB with adding init sample
+        bo = BOWrapper(optimizer=optimizer,
+                       n_iter=n_iter,
+                       save_csv=True,
+                       prior_point_list=prior_point_list,
+                       adding_init=True,
+                       acq='ucb',
+                       save_dir='init_sample')
+        bo.optimize()
+
+    for _ in range(100):
+        # Contrast experiment: vanilla UCB with no prior knowledge
+        bo = BOWrapper(optimizer=optimizer,
+                       n_iter=n_iter,
+                       save_csv=True,
+                       prior_point_list=prior_point_list,
+                       acq='ucb',
+                       save_dir='vanilla')
+        bo.optimize()
+
     # olympus_simulator = OlympusEmulatorWrapper(dataset='snar')
     # name, bound = olympus_simulator.get_names_and_bounds()
     n_iter = 200
@@ -155,9 +198,10 @@ if __name__ == '__main__':
         print(bo.optimizer.gpytorch_model.get_gate())
         bo.save_surrogate_model(n_iter=n_iter)
 
+
     # 批量操作脚本
     import sys
-'''    newfile = 'batch testing output.txt'
+'''newfile = 'batch testing output.txt'
     data = open(newfile, 'w', encoding='utf-8')
     # sys.stdout = data
     for training_iteration in [500]:
@@ -173,3 +217,5 @@ if __name__ == '__main__':
             print('eigvalue_list: ', eigvalue_list)
             print('gated_list', gated_list)
     data.close()'''
+
+

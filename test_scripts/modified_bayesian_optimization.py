@@ -12,16 +12,21 @@ from scipy.optimize import minimize
 class ModifiedBayesianOptimization(BayesianOptimization):
 
     def __init__(self, f, pbounds, prior_point_list, random_state=None, verbose=2,
-                 bounds_transformer=None, save_result=False):
+                 bounds_transformer=None, save_result=False, adding_init_sample=False, save_dir=None):
         super(ModifiedBayesianOptimization, self).__init__(f, pbounds, random_state, verbose, bounds_transformer)
         self.prior_point_list = prior_point_list
-        self._queue.add(np.array([5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]))  # Bad Prior
-        # self._queue.add(np.array([0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0]))  # Good Prior
+
+        # Contrast experiment: adding prior points into initial samples
+        if adding_init_sample and prior_point_list is not None:
+            for point in prior_point_list:
+                self._queue.add(np.array(point))
+
         self._max_value = 0  # Record max value
         df_columns = list(pbounds.keys()) + ['target']
         self._df_max = pd.DataFrame([], columns=df_columns)  # Record all optimal points as experiment results
         self._df = pd.DataFrame([], columns=df_columns)  # Record all points as experiment results
         self.save_result = save_result
+        self.save_dir = save_dir
 
     def maximize(self,
                  init_points=5,
@@ -68,7 +73,10 @@ class ModifiedBayesianOptimization(BayesianOptimization):
         if self.save_result:
             from datetime import datetime
             name = str(datetime.now()).replace(':', '-').split('.')[0]
-            path = os.path.join('./data', name)
+            if self.save_dir is None:
+                path = os.path.join('./data', name)
+            else:
+                path = os.path.join('./'+self.save_dir, name)
             if not os.path.exists(path):
                 os.mkdir(path)
             self._df.to_csv(os.path.join(path, 'df_total.csv'))
@@ -117,6 +125,7 @@ class ModifiedFunction(object):
         if self.kind == 'ucb':
             return self._ucb(x, gp, self.kappa)
         if self.kind == 'new_ucb':
+            assert self.prior_point_list is not None, 'Prior point list should not be none'
             return self._new_ucb(x, gp, self.kappa, self.prior_point_list, self.lr)
 
     def update_params(self):
