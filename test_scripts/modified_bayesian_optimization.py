@@ -28,6 +28,15 @@ class ModifiedBayesianOptimization(BayesianOptimization):
         self.save_result = save_result
         self.save_dir = save_dir
 
+    def probe(self, params, lazy=True):
+        """Probe target of x"""
+        if lazy:
+            self._queue.add(params)
+        else:
+            target = self._space.probe(params)
+            self.dispatch(Events.OPTIMIZATION_STEP)
+            return target
+
     def maximize(self,
                  init_points=5,
                  n_iter=25,
@@ -73,10 +82,11 @@ class ModifiedBayesianOptimization(BayesianOptimization):
         if self.save_result:
             from datetime import datetime
             name = str(datetime.now()).replace(':', '-').split('.')[0]
+            path = os.getcwd()
             if self.save_dir is None:
-                path = os.path.join('./data', name)
+                path = os.path.join(os.path.join(path, 'data'), name)
             else:
-                path = os.path.join('./'+self.save_dir, name)
+                path = os.path.join(os.path.join(path, self.save_dir), name)
             if not os.path.exists(path):
                 os.mkdir(path)
             self._df.to_csv(os.path.join(path, 'df_total.csv'))

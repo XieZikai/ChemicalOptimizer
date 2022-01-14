@@ -179,6 +179,8 @@ if __name__ == '__main__':
                        save_dir='vanilla')
         bo.optimize()
 
+    exit()
+
     # olympus_simulator = OlympusEmulatorWrapper(dataset='snar')
     # name, bound = olympus_simulator.get_names_and_bounds()
     n_iter = 200
