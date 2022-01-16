@@ -88,7 +88,7 @@ class ModifiedBayesianOptimization(BayesianOptimization):
             else:
                 path = os.path.join(os.path.join(path, self.save_dir), name)
             if not os.path.exists(path):
-                os.mkdir(path)
+                os.makedirs(path)
             self._df.to_csv(os.path.join(path, 'df_total.csv'))
             self._df_max.to_csv(os.path.join(path, 'df_max.csv'))
 

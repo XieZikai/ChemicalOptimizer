@@ -145,8 +145,8 @@ if __name__ == '__main__':
     n_iter = 200
     optimizer = 'TestBO'
 
-    prior_point_list = [[5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]]  # Bad prior
-    # prior_point_list = [[0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0]]  # Good prior
+    # prior_point_list = [[5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]]  # Bad prior
+    prior_point_list = [[0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0]]  # Good prior
 
     for _ in range(100):
         # Experiment: UCB with penalty term
