@@ -70,9 +70,9 @@ class ModifiedBayesianOptimization(BayesianOptimization):
             target = self.probe(x_probe, lazy=False)
             x_probe_dict = self._space.array_to_params(x_probe)
             x_probe_dict['target'] = target
-            self._df.append(x_probe_dict, ignore_index=True)
+            self._df = self._df.append(x_probe_dict, ignore_index=True)
             if target > self._max_value:
-                self._df_max.append(self._space.array_to_params(x_probe), ignore_index=True)
+                self._df_max = self._df_max.append(self._space.array_to_params(x_probe), ignore_index=True)
 
             if self._bounds_transformer:
                 self.set_bounds(

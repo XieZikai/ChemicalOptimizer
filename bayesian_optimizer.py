@@ -145,7 +145,6 @@ if __name__ == '__main__':
     n_iter = 200
     optimizer = 'TestBO'
 
-    # prior_point_list = [[5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]]  # Bad prior
     prior_point_list = [[0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0]]  # Good prior
 
     for _ in range(100):
@@ -155,7 +154,7 @@ if __name__ == '__main__':
                        save_csv=True,
                        prior_point_list=prior_point_list,
                        acq='new_ucb',
-                       save_dir='penalty_term')
+                       save_dir='good_prior/penalty_term')
         bo.optimize()
 
     for _ in range(100):
@@ -166,7 +165,7 @@ if __name__ == '__main__':
                        prior_point_list=prior_point_list,
                        adding_init=True,
                        acq='ucb',
-                       save_dir='init_sample')
+                       save_dir='good_prior/init_sample')
         bo.optimize()
 
     for _ in range(100):
@@ -176,7 +175,40 @@ if __name__ == '__main__':
                        save_csv=True,
                        prior_point_list=prior_point_list,
                        acq='ucb',
-                       save_dir='vanilla')
+                       save_dir='good_prior/vanilla')
+        bo.optimize()
+
+    prior_point_list = [[5, 0, 0, 5, 0, 0, 0, 5, 5, 0, 0]]  # Bad prior
+
+    for _ in range(100):
+        # Experiment: UCB with penalty term
+        bo = BOWrapper(optimizer=optimizer,
+                       n_iter=n_iter,
+                       save_csv=True,
+                       prior_point_list=prior_point_list,
+                       acq='new_ucb',
+                       save_dir='bad_prior/penalty_term')
+        bo.optimize()
+
+    for _ in range(100):
+        # Contrast experiment: vanilla UCB with adding init sample
+        bo = BOWrapper(optimizer=optimizer,
+                       n_iter=n_iter,
+                       save_csv=True,
+                       prior_point_list=prior_point_list,
+                       adding_init=True,
+                       acq='ucb',
+                       save_dir='bad_prior/init_sample')
+        bo.optimize()
+
+    for _ in range(100):
+        # Contrast experiment: vanilla UCB with no prior knowledge
+        bo = BOWrapper(optimizer=optimizer,
+                       n_iter=n_iter,
+                       save_csv=True,
+                       prior_point_list=prior_point_list,
+                       acq='ucb',
+                       save_dir='bad_prior/vanilla')
         bo.optimize()
 
     exit()
