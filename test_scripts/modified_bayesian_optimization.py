@@ -161,9 +161,13 @@ class ModifiedFunction(object):
 
         ucb_score = mean + kappa * std
 
+        chosen_index = np.random.randint(len(prior))
+        dist = np.linalg.norm(x-prior[chosen_index])
+
+        ''' Discarded old method: using all prior points to calculate total L2 distance.
         dist = 0
         for x_prime in prior:
-            dist += np.linalg.norm(x-x_prime)
+            dist += np.linalg.norm(x-x_prime)'''
 
         return ucb_score - lr * np.sqrt(dist)
 
