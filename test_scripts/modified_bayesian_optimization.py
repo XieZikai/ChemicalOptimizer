@@ -123,26 +123,30 @@ class ModifiedFunction(object):
         self._kappa_decay_delay = kappa_decay_delay
 
         self.xi = xi
+        self.constant_multiplier = None
 
         self._iters_counter = 0
 
         self.kind = kind
         self.prior_point_list = prior_point_list
-        self.lr = lr
+        self.lr = np.ones(len(prior_point_list)) * lr
         self._lr_decay = lr_decay
 
-    def utility(self, x, gp, y_max):
+        self.prior_pointer = None
+
+    def utility(self, x, gp):
         if self.kind == 'ucb':
             return self._ucb(x, gp, self.kappa)
         if self.kind == 'new_ucb':
             assert self.prior_point_list is not None, 'Prior point list should not be none'
-            return self._new_ucb(x, gp, self.kappa, self.prior_point_list, self.lr)
+            return self._new_ucb(x, gp, self.kappa, self.prior_point_list)
 
     def update_params(self):
+        # only change the learning rate chosen
         self._iters_counter += 1
         if self._kappa_decay < 1 and self._iters_counter > self._kappa_decay_delay:
             self.kappa *= self._kappa_decay
-        self.lr *= self._lr_decay
+        self.lr[self.prior_pointer] *= self._lr_decay
 
     @staticmethod
     def _ucb(x, gp, kappa):
@@ -153,8 +157,7 @@ class ModifiedFunction(object):
 
         return mean + kappa * std
 
-    @staticmethod
-    def _new_ucb(x, gp, kappa, prior, lr):
+    def _new_ucb(self, x, gp, kappa, prior):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             mean, std = gp.predict(x, return_std=True)
@@ -162,6 +165,10 @@ class ModifiedFunction(object):
         ucb_score = mean + kappa * std
 
         chosen_index = np.random.randint(len(prior))
+
+        self.prior_pointer = chosen_index
+        lr = self.lr[chosen_index]
+
         dist = np.linalg.norm(x-prior[chosen_index])
 
         ''' Discarded old method: using all prior points to calculate total L2 distance.
@@ -169,5 +176,11 @@ class ModifiedFunction(object):
         for x_prime in prior:
             dist += np.linalg.norm(x-x_prime)'''
 
-        return ucb_score - lr * np.sqrt(dist)
+        # Adding multiplier to make sure the penalty term is at the same scale as the UCB value
+        if self.constant_multiplier is None:
+            self.constant_multiplier = ucb_score / (lr * np.sqrt(dist) * 2)
 
+        return ucb_score - lr * np.sqrt(dist) * self.constant_multiplier
+
+    def manually_shrink_lr(self):
+        self.lr[self.prior_pointer] /= 2
