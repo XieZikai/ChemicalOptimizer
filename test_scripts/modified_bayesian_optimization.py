@@ -68,11 +68,15 @@ class ModifiedBayesianOptimization(BayesianOptimization):
                 iteration += 1
 
             target = self.probe(x_probe, lazy=False)
-            x_probe_dict = self._space.array_to_params(x_probe)
+            if isinstance(x_probe, dict):
+                x_probe_dict = x_probe
+            else:
+                x_probe_dict = self._space.array_to_params(x_probe)
             x_probe_dict['target'] = target
             self._df = self._df.append(x_probe_dict, ignore_index=True)
             if target > self._max_value:
-                self._df_max = self._df_max.append(self._space.array_to_params(x_probe), ignore_index=True)
+                self._df_max = self._df_max.append(x_probe_dict, ignore_index=True)
+                self._max_value = target
 
             if self._bounds_transformer:
                 self.set_bounds(
@@ -117,7 +121,9 @@ class ModifiedBayesianOptimization(BayesianOptimization):
 
 class ModifiedFunction(object):
 
-    def __init__(self, kind, kappa, xi, prior_point_list, kappa_decay=1, kappa_decay_delay=0, lr=0.1, lr_decay=0.8):
+    def __init__(self, kind, kappa, xi, prior_point_list, kappa_decay=1, kappa_decay_delay=0, lr=0.2, lr_decay=0.7):
+        # trials 1: 0.1, 0.8
+        # trials 2: 0.2, 0.7
         self.kappa = kappa
         self._kappa_decay = kappa_decay
         self._kappa_decay_delay = kappa_decay_delay

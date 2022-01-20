@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 base_dir = r'C:\Users\darkn\PycharmProjects\ChemicalOptimization\optimizers\GpytorchBO'
-prior_methods = ['vanilla', 'penalty_term', 'init_sample']
+prior_methods = ['penalty_term', 'init_sample']
 prior_types = ['good_prior', 'bad_prior']
 
 
@@ -37,10 +37,12 @@ def analyse_csv(prior_type, prior_method):
 
         result_csv = result_csv.append(column_dict, ignore_index=True)
 
-    result_csv.to_csv(prior_type + ' ' + prior_method + 'result.csv')
+    result_csv.to_csv(prior_type + ' ' + prior_method + '_result.csv')
 
 
 if __name__ == '__main__':
+    analyse_csv('good_prior', 'vanilla')
+
     for prior_method in prior_methods:
         for prior_type in prior_types:
             analyse_csv(prior_type, prior_method)
