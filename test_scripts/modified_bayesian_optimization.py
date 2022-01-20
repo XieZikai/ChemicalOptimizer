@@ -140,7 +140,7 @@ class ModifiedFunction(object):
 
         self.prior_pointer = None
 
-    def utility(self, x, gp):
+    def utility(self, x, gp, y_max):
         if self.kind == 'ucb':
             return self._ucb(x, gp, self.kappa)
         if self.kind == 'new_ucb':
@@ -170,12 +170,13 @@ class ModifiedFunction(object):
 
         ucb_score = mean + kappa * std
 
+        # todo: 这里不对，在这里使用随机会使得minimizer不稳定，也许应该加入到update_param里？
         chosen_index = np.random.randint(len(prior))
 
         self.prior_pointer = chosen_index
         lr = self.lr[chosen_index]
 
-        dist = np.linalg.norm(x-prior[chosen_index])
+        dist = np.linalg.norm(x-prior[chosen_index], axis=1)
 
         ''' Discarded old method: using all prior points to calculate total L2 distance.
         dist = 0
@@ -184,9 +185,14 @@ class ModifiedFunction(object):
 
         # Adding multiplier to make sure the penalty term is at the same scale as the UCB value
         if self.constant_multiplier is None:
-            self.constant_multiplier = ucb_score / (lr * np.sqrt(dist) * 2)
+            if isinstance(ucb_score, float):
+                self.constant_multiplier = ucb_score / (lr * np.sqrt(dist) * 2)
+            elif isinstance(ucb_score, np.ndarray) or isinstance(ucb_score, list):
+                self.constant_multiplier = ucb_score[0] / (lr * np.sqrt(dist[0]) * 2)
 
-        return ucb_score - lr * np.sqrt(dist) * self.constant_multiplier
+        penalty_term = lr * np.sqrt(dist) * self.constant_multiplier * 2
+
+        return ucb_score - penalty_term
 
     def manually_shrink_lr(self):
-        self.lr[self.prior_pointer] /= 2
+        self.lr[self.prior_pointer] /= 5
