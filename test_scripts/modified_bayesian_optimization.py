@@ -28,6 +28,8 @@ class ModifiedBayesianOptimization(BayesianOptimization):
         self.save_result = save_result
         self.save_dir = save_dir
 
+        self.iter_results = []
+
     def probe(self, params, lazy=True):
         """Probe target of x"""
         if lazy:
@@ -82,6 +84,12 @@ class ModifiedBayesianOptimization(BayesianOptimization):
                 self.set_bounds(
                     self._bounds_transformer.transform(self._space))
 
+            if iteration < init_points:
+                self.iter_results.append(target)
+            if iteration >= init_points:
+                if target < np.mean(self.iter_results):
+                    util.manually_shrink_lr()
+
         self.dispatch(Events.OPTIMIZATION_END)
         if self.save_result:
             from datetime import datetime
@@ -121,7 +129,7 @@ class ModifiedBayesianOptimization(BayesianOptimization):
 
 class ModifiedFunction(object):
 
-    def __init__(self, kind, kappa, xi, prior_point_list, kappa_decay=1, kappa_decay_delay=0, lr=0.2, lr_decay=0.7):
+    def __init__(self, kind, kappa, xi, prior_point_list, kappa_decay=1, kappa_decay_delay=0, lr=0.2, lr_decay=0.5):
         # trials 1: 0.1, 0.8
         # trials 2: 0.2, 0.7
         self.kappa = kappa
@@ -140,6 +148,8 @@ class ModifiedFunction(object):
 
         self.prior_pointer = None
 
+        self.chosen_index = np.random.randint(len(prior_point_list))
+
     def utility(self, x, gp, y_max):
         if self.kind == 'ucb':
             return self._ucb(x, gp, self.kappa)
@@ -153,6 +163,8 @@ class ModifiedFunction(object):
         if self._kappa_decay < 1 and self._iters_counter > self._kappa_decay_delay:
             self.kappa *= self._kappa_decay
         self.lr[self.prior_pointer] *= self._lr_decay
+
+        self.chosen_index = np.random.randint(len(self.prior_point_list))
 
     @staticmethod
     def _ucb(x, gp, kappa):
@@ -171,7 +183,7 @@ class ModifiedFunction(object):
         ucb_score = mean + kappa * std
 
         # todo: 这里不对，在这里使用随机会使得minimizer不稳定，也许应该加入到update_param里？
-        chosen_index = np.random.randint(len(prior))
+        chosen_index = self.chosen_index
 
         self.prior_pointer = chosen_index
         lr = self.lr[chosen_index]
@@ -195,4 +207,4 @@ class ModifiedFunction(object):
         return ucb_score - penalty_term
 
     def manually_shrink_lr(self):
-        self.lr[self.prior_pointer] /= 5
+        self.lr[self.prior_pointer] /= 10

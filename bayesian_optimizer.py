@@ -147,7 +147,7 @@ if __name__ == '__main__':
     prior_point_list = [[0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0],
                         [0, 5, 0, 0, 1.6, 5, 0, 0, 0.6, 5, 5],
                         [0, 5, 0, 0, 5, 5, 5, 0, 0, 4.282, 0]]  # Good prior
-    prior_point_list = prior_point_list[0:1]
+    # prior_point_list = prior_point_list[0:1]
 
     for _ in range(50):
         # Experiment: UCB with penalty term
