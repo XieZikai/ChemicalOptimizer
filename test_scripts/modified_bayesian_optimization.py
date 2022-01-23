@@ -148,7 +148,9 @@ class ModifiedFunction(object):
 
         self.prior_pointer = None
 
-        self.chosen_index = np.random.randint(len(prior_point_list))
+        self.chosen_index = 0
+        self.prior_alpha = [1 for i in range(len(self.prior_point_list))]
+        self.prior_beta = [1 for i in range(len(self.prior_point_list))]
 
     def utility(self, x, gp, y_max):
         if self.kind == 'ucb':
@@ -157,14 +159,26 @@ class ModifiedFunction(object):
             assert self.prior_point_list is not None, 'Prior point list should not be none'
             return self._new_ucb(x, gp, self.kappa, self.prior_point_list)
 
-    def update_params(self):
+    def update_params(self, success=None):
         # only change the learning rate chosen
         self._iters_counter += 1
         if self._kappa_decay < 1 and self._iters_counter > self._kappa_decay_delay:
             self.kappa *= self._kappa_decay
         self.lr[self.prior_pointer] *= self._lr_decay
 
-        self.chosen_index = np.random.randint(len(self.prior_point_list))
+        self.chosen_index = (self.chosen_index + 1) % len(self.prior_point_list)
+
+        if success is not None:
+            if success:
+                self.prior_alpha[self.prior_pointer] += 1
+            else:
+                self.prior_beta[self.prior_pointer] += 1
+
+        # Thompson Sampling on priors
+        beta_sample = []
+        for i in range(len(self.prior_point_list)):
+            beta_sample.append(np.random.beta(self.prior_alpha[i], self.prior_beta[i]))
+        self.chosen_index = np.argmax(beta_sample)
 
     @staticmethod
     def _ucb(x, gp, kappa):
@@ -182,7 +196,7 @@ class ModifiedFunction(object):
 
         ucb_score = mean + kappa * std
 
-        # todo: 这里不对，在这里使用随机会使得minimizer不稳定，也许应该加入到update_param里？
+        # todo: 改为更聪明的采样
         chosen_index = self.chosen_index
 
         self.prior_pointer = chosen_index
